@@ -1,0 +1,470 @@
+<!-- START SIGMA IMPORTS -->
+<script src="../src/sigma.core.js"></script>
+<script src="../src/conrad.js"></script>
+<script src="../src/utils/sigma.utils.js"></script>
+<script src="../src/utils/sigma.polyfills.js"></script>
+<script src="../src/sigma.settings.js"></script>
+<script src="../src/classes/sigma.classes.dispatcher.js"></script>
+<script src="../src/classes/sigma.classes.configurable.js"></script>
+<script src="../src/classes/sigma.classes.graph.js"></script>
+<script src="../src/classes/sigma.classes.camera.js"></script>
+<script src="../src/classes/sigma.classes.quad.js"></script>
+<script src="../src/classes/sigma.classes.edgequad.js"></script>
+<script src="../src/captors/sigma.captors.mouse.js"></script>
+<script src="../src/captors/sigma.captors.touch.js"></script>
+<script src="../src/renderers/sigma.renderers.canvas.js"></script>
+<script src="../src/renderers/sigma.renderers.webgl.js"></script>
+<script src="../src/renderers/sigma.renderers.svg.js"></script>
+<script src="../src/renderers/sigma.renderers.def.js"></script>
+<script src="../src/renderers/webgl/sigma.webgl.nodes.def.js"></script>
+<script src="../src/renderers/webgl/sigma.webgl.nodes.fast.js"></script>
+<script src="../src/renderers/webgl/sigma.webgl.edges.def.js"></script>
+<script src="../src/renderers/webgl/sigma.webgl.edges.fast.js"></script>
+<script src="../src/renderers/webgl/sigma.webgl.edges.arrow.js"></script>
+<script src="../src/renderers/canvas/sigma.canvas.labels.def.js"></script>
+<script src="../src/renderers/canvas/sigma.canvas.hovers.def.js"></script>
+<script src="../src/renderers/canvas/sigma.canvas.nodes.def.js"></script>
+<script src="../src/renderers/canvas/sigma.canvas.edges.def.js"></script>
+<script src="../src/renderers/canvas/sigma.canvas.edges.curve.js"></script>
+<script src="../src/renderers/canvas/sigma.canvas.edges.arrow.js"></script>
+<script src="../src/renderers/canvas/sigma.canvas.edges.curvedArrow.js"></script>
+<script src="../src/renderers/canvas/sigma.canvas.edgehovers.def.js"></script>
+<script src="../src/renderers/canvas/sigma.canvas.edgehovers.curve.js"></script>
+<script src="../src/renderers/canvas/sigma.canvas.edgehovers.arrow.js"></script>
+<script src="../src/renderers/canvas/sigma.canvas.edgehovers.curvedArrow.js"></script>
+<script src="../src/renderers/canvas/sigma.canvas.extremities.def.js"></script>
+<script src="../src/renderers/svg/sigma.svg.utils.js"></script>
+<script src="../src/renderers/svg/sigma.svg.nodes.def.js"></script>
+<script src="../src/renderers/svg/sigma.svg.edges.def.js"></script>
+<script src="../src/renderers/svg/sigma.svg.edges.curve.js"></script>
+<script src="../src/renderers/svg/sigma.svg.labels.def.js"></script>
+<script src="../src/renderers/svg/sigma.svg.hovers.def.js"></script>
+<script src="../src/middlewares/sigma.middlewares.rescale.js"></script>
+<script src="../src/middlewares/sigma.middlewares.copy.js"></script>
+<script src="../src/misc/sigma.misc.animation.js"></script>
+<script src="../src/misc/sigma.misc.bindEvents.js"></script>
+<script src="../src/misc/sigma.misc.bindDOMEvents.js"></script>
+<script src="../src/misc/sigma.misc.drawHovers.js"></script>
+<script src="data/twinPeaks.js"></script>
+<!-- END SIGMA IMPORTS -->
+<!--<body background="./img/welcome5.jpg"> -->
+<!-- <body style="background:url('./img/welcome5.jpg'); background-repeat: no-repeat; background-size: 100%;"> -->
+<body style="background:url('./img/welcome5.jpg'); background-repeat: no-repeat; background-size: 100%;background-color:black;">
+
+<div id="container">
+  <style>
+    #graph-container {
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      position: absolute;
+    }
+  </style>
+  <div id="graph-container"></div>
+</div>
+</body>
+<script>
+/**
+ * This is a basic example on how to develop a custom node renderer. In
+ * this example, the renderer will display an image clipped in a disc,
+ * with a border colored according the node's "color" value.
+ *
+ * If a node as the value "image" to its attribute "type", then it will
+ * displayed with the node renderer "sigma.canvas.nodes.image", with the
+ * url being its "url" value.
+ *
+ * IMPORTANT: This node renderer just works with the canvas renderer. If
+ * you do want to display images with the WebGL renderer, you will have
+ * to develop a specific WebGL node renderer.
+ */
+sigma.utils.pkg('sigma.canvas.nodes');
+sigma.canvas.nodes.image = (function() {
+  var _cache = {},
+      _loading = {},
+      _callbacks = {};
+
+  // Return the renderer itself:
+  var renderer = function(node, context, settings) {
+    var args = arguments,
+        prefix = settings('prefix') || '',
+        size = node[prefix + 'size'],
+        color = node.color || settings('defaultNodeColor'),
+        url = node.url;
+
+    if (_cache[url]) {
+      context.save();
+
+      // Draw the clipping disc:
+      context.beginPath();
+      context.arc(
+        node[prefix + 'x'],
+        node[prefix + 'y'],
+        node[prefix + 'size'],
+        0,
+        Math.PI * 2,
+        true
+      );
+      context.closePath();
+      context.clip();
+
+      // Draw the image
+      context.drawImage(
+        _cache[url],
+        node[prefix + 'x'] - size,
+        node[prefix + 'y'] - size,
+        2 * size,
+        2 * size
+      );
+
+      // Quit the "clipping mode":
+      context.restore();
+
+      // Draw the border:
+      context.beginPath();
+      context.arc(
+        node[prefix + 'x'],
+        node[prefix + 'y'],
+        node[prefix + 'size'],
+        0,
+        Math.PI * 2,
+        true
+      );
+      context.lineWidth = size / 5;
+      context.strokeStyle = node.color || settings('defaultNodeColor');
+      context.stroke();
+    } else {
+      sigma.canvas.nodes.image.cache(url);
+      sigma.canvas.nodes.def.apply(
+        sigma.canvas.nodes,
+        args
+      );
+    }
+  };
+
+  // Let's add a public method to cache images, to make it possible to
+  // preload images before the initial rendering:
+  renderer.cache = function(url, callback) {
+    if (callback)
+      _callbacks[url] = callback;
+
+    if (_loading[url])
+      return;
+
+    var img = new Image();
+
+    img.onload = function() {
+      _loading[url] = false;
+      _cache[url] = img;
+
+      if (_callbacks[url]) {
+        _callbacks[url].call(this, img);
+        delete _callbacks[url];
+      }
+    };
+
+    _loading[url] = true;
+    img.src = url;
+  };
+
+  return renderer;
+})();
+
+// Now that's the renderer has been implemented, let's generate a graph
+// to render:
+var i,
+    s,
+    img,
+    N = 10,
+    E = 50,
+    g = {
+      nodes: [],
+      edges: []
+    },
+    urls = ['./img/LauraPalmer.png',
+    './img/BenHorne.png',
+    './img/JosiePackard.png',
+    './img/JamesHurley.png',
+    './img/HarrySTruman.png',
+    './img/DonnaHayward.png',
+    './img/GarlandBriggs.png',
+    './img/NormaJennings.png',
+    './img/LeoJohnson.png',
+    './img/EdHurley.png',
+    './img/RonettePulaski.png',
+    './img/JoeyPaulson.png',
+    './img/Blackie.png',
+    './img/bob.png',
+    './img/Giant.png',
+    './img/ThomasEckhardt.png',
+    './img/DickTremayne.png',
+    './img/MrsTremond.png',
+    './img/HaroldSmith.png',
+    './img/LogLady.png',
+    './img/PeteMartell.png',
+    './img/LucyMoran.png',
+    './img/DaleCooper.png',
+    './img/AndyBrennan.png',
+    './img/LelandPalmer.png',
+    './img/BobbyBriggs.png',
+    './img/SarahPalmer.png',
+    './img/AudreyHorne.png',
+    './img/JerryHorne.png',
+    './img/ShellyJohnson.png',
+    './img/Hawk.png',
+    './img/HankJennings.png',
+    './img/TheOneArmedManMike.png',
+    './img/CatherineMartell.png',
+    './img/DianeEvans.png',
+    './img/WaldoTheBird.png',
+    './img/Jackoby.png',
+    './img/NadineHurley.png',
+    './img/MikeNelson.png',
+    './img/AndrewPackard.png',
+    './img/MadeleineFerguson.png',
+    './img/DwayneMilford.png',
+    './img/Waiter.png',
+    './img/Albert.png',
+    './img/ManFromAnotherPlace.png',
+    './img/WindomEarle.png',
+    './img/AnnieBlackBurn.png',
+    './img/GordonCole.png',
+    './img/DeniseBryson.png',
+    './img/WillHayward.png',
+    './img/EileenHayward.png',
+    './img/HarrietHayward.png',
+    './img/GerstenHayward.png',
+    './img/JohnnyHorne.png',
+    './img/JacquesRenault.png',
+    './img/BernardRenault.png',
+    './img/JeanRenault.png',
+    './img/CalvinReilly.png',
+    './img/BettyBriggs.png',
+    './img/TheOneArmedManMike.png',
+    './img/PierreTremond.png',
+    './img/SylviaHorne.png',
+    './img/JonathanKumagai.png',
+    './img/EvelynMarsh.png',
+    './img/MalcomSloan.png',
+    './img/log.png',
+    './img/lana.png',
+    './img/DougieMilford.png',
+    './img/John.png',
+    './img/VivianSmythe.png',
+    './img/Ernie.png'],
+    /*['/home/lea/network/sigma.js-master/examples/img/LauraPalmer.png',
+    '/home/lea/network/sigma.js-master/examples/img/BenHorne.png',
+    '/home/lea/network/sigma.js-master/examples/img/JosiePackard.png',
+    '/home/lea/network/sigma.js-master/examples/img/JamesHurley.png',
+    '/home/lea/network/sigma.js-master/examples/img/HarrySTruman.png',
+    '/home/lea/network/sigma.js-master/examples/img/DonnaHayward.png',
+    '/home/lea/network/sigma.js-master/examples/img/GarlandBriggs.png',
+    '/home/lea/network/sigma.js-master/examples/img/NormaJennings.png',
+    '/home/lea/network/sigma.js-master/examples/img/LeoJohnson.png',
+    '/home/lea/network/sigma.js-master/examples/img/EdHurley.png',
+    '/home/lea/network/sigma.js-master/examples/img/RonettePulaski.png',
+    '/home/lea/network/sigma.js-master/examples/img/JoeyPaulson.png',
+    '/home/lea/network/sigma.js-master/examples/img/Blackie.png',
+    '/home/lea/network/sigma.js-master/examples/img/bob.png',
+    '/home/lea/network/sigma.js-master/examples/img/Giant.png',
+    '/home/lea/network/sigma.js-master/examples/img/ThomasEckhardt.png',
+    '/home/lea/network/sigma.js-master/examples/img/DickTremayne.png',
+    '/home/lea/network/sigma.js-master/examples/img/MrsTremond.png',
+    '/home/lea/network/sigma.js-master/examples/img/HaroldSmith.png',
+    '/home/lea/network/sigma.js-master/examples/img/LogLady.png',
+    '/home/lea/network/sigma.js-master/examples/img/PeteMartell.png',
+    '/home/lea/network/sigma.js-master/examples/img/LucyMoran.png',
+    '/home/lea/network/sigma.js-master/examples/img/DaleCooper.png',
+    '/home/lea/network/sigma.js-master/examples/img/AndyBrennan.png',
+    '/home/lea/network/sigma.js-master/examples/img/LelandPalmer.png',
+    '/home/lea/network/sigma.js-master/examples/img/BobbyBriggs.png',
+    '/home/lea/network/sigma.js-master/examples/img/SarahPalmer.png',
+    '/home/lea/network/sigma.js-master/examples/img/AudreyHorne.png',
+    '/home/lea/network/sigma.js-master/examples/img/JerryHorne.png',
+    '/home/lea/network/sigma.js-master/examples/img/ShellyJohnson.png',
+    '/home/lea/network/sigma.js-master/examples/img/Hawk.png',
+    '/home/lea/network/sigma.js-master/examples/img/HankJennings.png',
+    '/home/lea/network/sigma.js-master/examples/img/TheOneArmedManMike.png',
+    '/home/lea/network/sigma.js-master/examples/img/CatherineMartell.png',
+    '/home/lea/network/sigma.js-master/examples/img/DianeEvans.png',
+    '/home/lea/network/sigma.js-master/examples/img/WaldoTheBird.png',
+    '/home/lea/network/sigma.js-master/examples/img/Jackoby.png',
+    '/home/lea/network/sigma.js-master/examples/img/NadineHurley.png',
+    '/home/lea/network/sigma.js-master/examples/img/MikeNelson.png',
+    '/home/lea/network/sigma.js-master/examples/img/AndrewPackard.png',
+    '/home/lea/network/sigma.js-master/examples/img/MadeleineFerguson.png',
+    '/home/lea/network/sigma.js-master/examples/img/DwayneMilford.png',
+    '/home/lea/network/sigma.js-master/examples/img/Waiter.png',
+    '/home/lea/network/sigma.js-master/examples/img/Albert.png',
+    '/home/lea/network/sigma.js-master/examples/img/ManFromAnotherPlace.png',
+    '/home/lea/network/sigma.js-master/examples/img/WindomEarle.png',
+    '/home/lea/network/sigma.js-master/examples/img/AnnieBlackBurn.png',
+    '/home/lea/network/sigma.js-master/examples/img/GordonCole.png',
+    '/home/lea/network/sigma.js-master/examples/img/DeniseBryson.png',
+    '/home/lea/network/sigma.js-master/examples/img/WillHayward.png',
+    '/home/lea/network/sigma.js-master/examples/img/EileenHayward.png',
+    '/home/lea/network/sigma.js-master/examples/img/HarrietHayward.png',
+    '/home/lea/network/sigma.js-master/examples/img/GerstenHayward.png',
+    '/home/lea/network/sigma.js-master/examples/img/JohnnyHorne.png',
+    '/home/lea/network/sigma.js-master/examples/img/JacquesRenault.png',
+    '/home/lea/network/sigma.js-master/examples/img/BernardRenault.png',
+    '/home/lea/network/sigma.js-master/examples/img/JeanRenault.png',
+    '/home/lea/network/sigma.js-master/examples/img/CalvinReilly.png',
+    '/home/lea/network/sigma.js-master/examples/img/BettyBriggs.png',
+    '/home/lea/network/sigma.js-master/examples/img/TheOneArmedManMike.png',
+    '/home/lea/network/sigma.js-master/examples/img/PierreTremond.png',
+    '/home/lea/network/sigma.js-master/examples/img/SylviaHorne.png',
+    '/home/lea/network/sigma.js-master/examples/img/JonathanKumagai.png',
+    '/home/lea/network/sigma.js-master/examples/img/EvelynMarsh.png',
+    '/home/lea/network/sigma.js-master/examples/img/MalcomSloan.png',
+    '/home/lea/network/sigma.js-master/examples/img/log.png',
+    '/home/lea/network/sigma.js-master/examples/img/lana.png',
+    '/home/lea/network/sigma.js-master/examples/img/DougieMilford.png'],*/
+      /*'img/Albert.png',
+      'img/AndrewPackard.png',
+      'img/AndyBrennan.png',
+      'img/AnnieBlackburn.png',
+      'img/AudreyHorne.png',
+      'img/BenHorne.png',
+      'img/BernardRenault.png',
+      'img/BettyBriggs.png',
+      'img/Blackie.png',
+      'img/bob.png',
+      'img/BobbyBriggs.png',
+      'img/CalvinReilly.png',
+      'img/CatherineMartell.png',
+      'img/DaleCooper.png',
+      'img/DeniseBryson.png',
+      'img/DianeEvans.png',
+      'img/DickTremayne.png',
+      'img/DonnaHayward.png',
+      'img/DwayneMilford.png',
+      'img/EdHurley.png',
+      'img/EileenHayward.png',
+      'img/GarlandBriggs.png',
+      'img/GerstenHayward.png',
+      'img/Giant.png',
+      'img/GordonCole.png',
+      'img/HankJennings.png',
+      'img/HaroldSmith.png',
+      'img/HarrietHayward.png',
+      'img/HarrySTruman.png',
+      'img/Hawk.png',
+      'img/Jackoby.png',
+      'img/JacquesRenault.png',
+      'img/JamesHurley.png',
+      'img/JeanRenault.png',
+      'img/JerryHorne.png',
+      'img/JoeyPaulson.png',
+      'img/JohnnyHorne.png',
+      'img/JosiePackard.png',
+      'img/LauraPalmer.png',
+      'img/LelandPalmer.png',
+      'img/LeoJohnson.png',
+      'img/LogLady.png',
+      'img/LucyMoran.png',
+      'img/MadeleineFerguson.png',
+      'img/ManFronAnotherPlace.png',
+      'img/MikeNelson.png',
+      'img/MrsTremond.png',
+      'img/NadineHurley.png',
+      'img/NormaJennings.png',
+      'img/PeteMartell.png',
+      'img/RonettePulaski.png',
+      'img/SarahPalmer.png',
+      'img/ShellyJohnson.png',
+      'img/TheOneArmedManMike.png',
+      'img/ThomasEckhardt.png',
+      'img/Waiter.png',
+      'img/WaldoTheBird.png',
+      'img/WillHayward.png',
+      'img/WindomEarle.png',
+    ],*/
+    loaded = 0,
+    colors = [
+      '#617db4',
+      '#668f3c',
+      '#c6583e',
+      '#b956af'
+    ];
+
+// Generate a random graph, with ~30% nodes having the type "image":
+/*for (i = 0; i < N; i++) {
+  img = Math.random() >= 0.7;
+  g.nodes.push({
+    id: 'n' + i,
+    label: 'Node ' + i,
+    type: img ? 'image' : 'def',
+    url: img ? urls[Math.floor(Math.random() * urls.length)] : null,
+    x: Math.random(),
+    y: Math.random(),
+    size: Math.random(),
+    color: colors[Math.floor(Math.random() * colors.length)]
+  });
+}*/
+
+for (i = 0; i < TPgraph.nodes.length; i++)
+{
+  g.nodes.push({
+    id: TPgraph.nodes[i].id,
+    label: TPgraph.nodes[i].label,
+    type: 'image',
+    url: TPgraph.nodes[i].attributes.url,
+    x: TPgraph.nodes[i].x, ///kingX,
+    y: -TPgraph.nodes[i].y, ///kingY,
+    size: TPgraph.nodes[i].size/1.5, ///maxSize, //size: 1,
+    color: TPgraph.nodes[i].color
+  });
+}
+
+/*for (i = 0; i < E; i++)
+  g.edges.push({
+    id: 'e' + i,
+    source: 'n' + (Math.random() * N | 0),
+    target: 'n' + (Math.random() * N | 0),
+    size: Math.random()
+  });*/
+
+  for (i = 0; i < TPgraph.edges.length; i++)
+  {
+    g.edges.push({
+      id: TPgraph.edges[i].id,
+      source: TPgraph.edges[i].source,
+      target: TPgraph.edges[i].target,
+      size: TPgraph.edges[i].size/2,
+      color: TPgraph.edges[i].color
+    });
+  }
+
+// Then, wait for all images to be loaded before instanciating sigma:
+urls.forEach(function(url) {
+  sigma.canvas.nodes.image.cache(
+    url,
+    function() {
+      if (++loaded === urls.length-1)
+        // Instantiate sigma:
+        s = new sigma({
+          graph: g,
+          renderer: {
+            // IMPORTANT:
+            // This works only with the canvas renderer, so the
+            // renderer type set as "canvas" is necessary here.
+            container: document.getElementById('graph-container'),
+            type: 'canvas'
+          },
+          settings: {
+            minNodeSize: 1,
+            maxNodeSize: 100,
+            defaultLabelColor: '#ffffff',
+            defaultLabelHoverColor: '#ffffff',
+            defaultLabelSize: 20,
+            minEdgeSize: 0,
+            maxEdgeSize: 0,
+            minNodeSize: 0,
+            maxNodeSize: 0
+          }
+        });
+    }
+  );
+});
+</script>
